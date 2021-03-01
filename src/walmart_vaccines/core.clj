@@ -2,23 +2,27 @@
   (:require [aleph.http :as http]
             [byte-streams :as bs]
             [cheshire.core :as json]
+            [clojure.string :as string]
             [clj-config.core :refer [env]]
             [hickory.core :as hickory]
-            [hickory.select :as select]))
+            [hickory.select :as select])
+  (:import [java.util.zip GZIPInputStream]))
 
 
 (def cookie
   (env :walmart-cookie))
 
+
+
 (defn get-session! []
   (let [params {:captcha {:sensorData "2a25G2m84Vrp0o9c4185491.12-1,8,-36,-890,Mozilla/9.8 (X18; Linux x04_33; rv:77.2) Gecko/90410063 Firefox/71.0,uaend,28020,51196365,en-US,Gecko,2,4,8,7,367347,7462740,0990,2076,7348,8987,4029,988,9099,,cpen:6,i5:8,dm:7,cwen:2,non:8,opc:1,fc:7,sc:7,wrc:2,isc:27,vib:8,bat:6,x53:1,x19:4,4715,4.157281209166,448647501212,loc:-3,3,-91,-200,do_en,dm_en,t_en-7,4,-63,-136,9,4,4,9,210,551,9;3,4,8,8,853,982,2;4,-2,9,7,-2,-7,6;3,-8,0,0,-1,-3,4;8,9,0,1,2287,579,1;9,-1,1,0,3717,990,7;3,2,6,7,978,427,3;1,6,6,3,2850,814,9;2…,6229,179,350,-2;-7,8,-75,-187,-1,8,-36,-801,-4,2,-10,-916,-8,5,-80,-532,-0,9,-04,-367,1,8892;5,2960;7,0178;9,5111;4,9222;2,4547;-7,8,-75,-182,-1,8,-36,-805,NaN,020007,1,9,7,3,NaN,3058,8510692294551,9782631518424,12,24169,7,74,4419,3,9,4668,014039,1,ecoqndlojff10dicngl0_2933,8673,456,-676393647,33964316-0,4,-12,-003,-2,9-3,6,-01,-40,965228767;81,85,26,79,62,32,24,60,36,05,7;;true;true;true;050;true;86;66;true;false;unspecified-2,1,-58,-97,6694-1,8,-36,-806,13976828-3,3,-91,-217,384589-0,9,-04,-385,;12;6;4"}
-                :password "b#O|{Id017}F8!a"
                 :rememberme true
                 :showRememberme "true"
-                :username "brianrubinton@gmail.com"
+                :username (env :walmart-username)
+                :password (env :walmart-password)
                 }
         response (try
-                   @(http/post "https://www.walmart.com/account/electrode/api/signin?returnUrl=/account?r=yes"
+                   @(http/post "https://www.walmart.com/account/electrode/api/signin"
                                {:headers {
                                           "Accept" "*/*" ; whitespace error
                                           "Accept-Encoding" "gzip,deflate,br"
@@ -33,11 +37,13 @@
                                           "TE" "Trailers"
                                           "User-Agent" "Mozilla/5.0 (X11; Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0"
                                           }
-                                :params (json/generate-string params)})
+                                :params (json/generate-string params)
+                                :query-params {"returnUrl" "/account"
+                                               "r" "yes"}})
                    (catch Exception e
                      (println (-> e ex-data :status))
                      (-> (ex-data e)
-                         (update :body (comp json/parse-string bs/to-string)))))]
+                         (update :body (comp bs/to-string)))))]
     (-> response)))
 
 (comment
@@ -83,6 +89,9 @@
            (map #(get % "slots"))
            (some not-empty)))
 
+(defn availability-response->slots [response]
+  (get-in response ["data" "slotDays"]))
+
 (def missouri-stores
   #{1514 92 56 834 5149 184 46 820 145 2175 1188 203 845 888 89 109 13 914 2600
     135 20 895 152 95 30 44 295 195 37 805 69 5927 337 51 1120 609 96 326 313
@@ -105,18 +114,7 @@
         (:body)))
   (clojure.pprint/pprint x)
 
-  (def result
-    (->> missouri-stores
-         (map str)
-         (pmap (fn [id]
-                 {:response (check-availability id "02282021" "03062021")
-                  :id id}))
-         (filter (every-pred (comp success? :body :response)
-                             (comp has-appointments? :body :response)))
-         (pmap (fn [{:keys [response id] :as acc}]
-                 (let [address ])
-                 (merge acc ())))
-         ))
+  
 
   (count result)
 
@@ -195,12 +193,11 @@
                       (catch Exception e
                         (ex-data e)))
         body (-> response :body bs/to-string json/parse-string)
-        ;; body (-> response :body bs/to-string)
         ]
-     ;; (clojure.pprint/pprint body)
+    (println (get-in body ["resourceSets" 0 "resources" 0 "travelDistance"])
+             (get-in body ["resourceSets" 0 "resources" 0 "travelDistance"]))
     {:distance-in-miles (get-in body ["resourceSets" 0 "resources" 0 "travelDistance"])
-     :duration-in-seconds (get-in body ["resourceSets" 0 "resources" 0 "travelDuration"])}
-    ))
+     :duration-in-seconds (get-in body ["resourceSets" 0 "resources" 0 "travelDuration"])}))
 
 (comment
   (clojure.pprint/pprint (get-distance {:zip-code "63105"} {:zip-code "63131"}))
@@ -209,21 +206,29 @@
     (->> missouri-stores
          (map str)
          (pmap (fn [id]
-                 {:response (check-availability id "02282021" "03062021")
-                  :id id}))
+                 (let [response (check-availability id "03012021" "03072021")]
+                   {:response response
+                    :appointment-slots (availability-response->slots (:body response))
+                    :id id})))
          (filter (every-pred (comp success? :body :response)
                              (comp has-appointments? :body :response)))
          (pmap (fn [{:keys [response id] :as acc}]
-                 (println id)
+                 #_(println id)
                  (let [address (store-html->data (:body (get-store (str id))))]
-                   (println address)
+                   #_(println address)
                    (merge acc address (get-distance {:zip-code "63105"}
                                                     {:zip-code (str (get address :zip-code))})))))
-         (sort-by :distance-in-seconds <)))
+         (filter :duration-in-seconds)
+         (sort-by :duration-in-seconds <)))
+
+  (filter (fn [x] (= "25" (get x "id"))) result)
 
   (clojure.pprint/pprint (last result))
 
   (clojure.pprint/pprint (first result))
+
+  (count result)
+  (spit "2021_03_01__missouri.json" (json/generate-string (map #(dissoc % :response) result)))
 
 
   (def store-id-with-appointments "820")
@@ -258,3 +263,27 @@
    :eligible-set [] ; stores-by-id filtered by with-appointments and state
    :active-set [] ; eligible-set filtered by day and time selections
    })
+
+
+(def cookie-parts (string/split (env :walmart-cookie) #" " ))
+
+
+
+(comment
+
+  (success? (check-availability 29 "03012021" "03072021"))
+
+  (loop [necessary-parts []
+         [cookie-to-exclude & cookie-parts] cookie-parts]
+    (if-not cookie-to-exclude
+      (do
+        (clojure.pprint/pprint necessary-parts)
+        necessary-parts)
+      (with-redefs [cookie (string/join " " (concat cookie-parts necessary-parts))]
+        (let [response (check-availability 337 "03012021" "03072021")]
+          (if (success? response)
+            (recur necessary-parts cookie-parts)
+            (recur (conj necessary-parts cookie-to-exclude)
+                   cookie-parts))))))
+  )
+

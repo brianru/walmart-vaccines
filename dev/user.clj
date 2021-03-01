@@ -1,6 +1,5 @@
 (ns user
-  (:require [walmart-vaccines.core :refer :all])
-  (:import [java.util.zip GZIPInputStream]))
+  (:require [walmart-vaccines.core :refer :all]))
 
 (comment
 
