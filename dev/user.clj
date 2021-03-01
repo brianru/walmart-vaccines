@@ -1,20 +1,59 @@
 (ns user
   (:require [aleph.http :as http]
             [byte-streams :as bs]
-            [cheshire.core :as json])
+            [cheshire.core :as json]
+            [clj-config.core :refer [env]]
+            [hickory.core :as hickory]
+            [hickory.select :as select])
   (:import [java.util.zip GZIPInputStream]))
 
 (def cookie
-  "hasACID=1; com.wm.reflector=\"reflectorid:0000000000000000000000@lastupd:1613618093762@firstcreate:1613618093762\"; DL=63105%2C%2C%2Cip%2C63105%2C%2C; TB_Latency_Tracker_100=1; TB_Navigation_Preload_01=1; TB_SFOU-100=; TB_DC_Flap_Test=0; vtc=eexAdnsVK_sDuQ2ZI0VsG0; bstc=eexAdnsVK_sDuQ2ZI0VsG0; mobileweb=0; xpa=-nqgU|5Z16k|7Evb-|9Kguz|hn7Gx; xpm=1%2B1613618137%2BeexAdnsVK_sDuQ2ZI0VsG0~bedc33b6-dba3-454b-821f-64ea96ae94ef%2B0; exp-ck=7Evb-29Kguz1; TS01b0be75=01538efd7cab89c1fa731ee432f9720d219a98ff6721231fb16b98f9e854e8839e74cf72d0670a9c039c1cc705b3d8074121fc1057; TS013ed49a=01538efd7cab89c1fa731ee432f9720d219a98ff6721231fb16b98f9e854e8839e74cf72d0670a9c039c1cc705b3d8074121fc1057; akavpau_p8=1613618748~id=e4e54312869532a3f6cf091b2ca35e35; TBV=7; adblocked=false; TS011baee6=01c5a4e2f9812774539b1739d9bc6df95318dd990c65c844a606c79107dbed0f9a5dc7047816e88b5281c610240291ce2868397f3c; TS018dc926=01c5a4e2f97a5b98a9e8dd271f05cbe89d2da146cafd65c16528794f35ff97e559e9b0ce07b271e33c4315f69bb2a85296c049440b; TS01e3f36f=01c5a4e2f97a5b98a9e8dd271f05cbe89d2da146cafd65c16528794f35ff97e559e9b0ce07b271e33c4315f69bb2a85296c049440b; __gads=ID=3092c3f32c049138-22b4dbe1a7c6009f:T=1613618097:S=ALNI_Mad40LODgBUvi5xkwCAdVmlOQdf1g; _abck=ecoqndlojff78dicngl0_1947; s_pers=%20s_v%3DY%7C1613620722161%3B%20gpv_p11%3Dno%2520value%7C1613620722196%3B%20gpv_p44%3Dno%2520value%7C1613620722209%3B%20s_vs%3D1%7C1613620722214%3B%20s_fid%3D701969FA85BB8647-3874E78E02937464%7C1676690922481%3B; tb_sw_supported=false; _pxvid=7b523597-7197-11eb-851a-0242ac120017; s_pers_2=+s_fid%3D701969FA85BB8647-3874E78E02937464%7C1676690099145%3BuseVTC%3DY%7C1676733299; s_sess_2=%20s_cc%3Dtrue%3B; _gcl_au=1.1.200160294.1613618100; _uetsid=7bdf61d0719711eb9a2cdb4d68c3d64b; _uetvid=7bdfc220719711eb89cc7109a658fe2f; s_sess=%20ent%3DAccount%253ASignIn%3B%20cp%3DY%3B%20s_sq%3D%3B%20s_cc%3Dtrue%3B%20cps%3D0%3B%20chan%3Dorg%3B%20v59%3DAccount%3B%20v54%3DAccount%253A%2520SignIn%3B; _fbp=fb.1.1613618100169.824182776; s_vi=[CS]v1|3016EDDA2D13BA4D-4000096618AE984C[CE]; wm_ul_plus=INACTIVE|1613704537019; auth=MTAyOTYyMDE4thI0LN3YApXyECrR%2FrUyVVKmr1Z9lUPVRpmsMppnhS18YHCDFnRAIbMK%2BsEnHyadHTS66b0wlyszzFQI6pYsHk9YXptqDS44VDez3iGKD%2FXxl773I%2B54vTjXFs8Snxk2RMvR4vpAGLQJj3IgMhxaynKJnzQpQ307IT2jqPV0haG4qDg0VFcYAH9cFy%2BWboGgSViSsQ9h8go%2FEWcJJIDkd1L6CZSzVZykBKTRtORKnJVxU44fd5CBJWII9nXGtMY3DL8AYcF%2B38xlvT2qB%2F%2BUo%2FsOJ%2BZXWBTvPWdBH%2Bws2IHJ7bu6s6nDdjEVZva4DZJV4XyeFk9XemoBc8j0YJzVOcchuHkBeSEalmNtIVf%2FJufFivioazjpgPe5%2F9%2FI6ihnlpzDKHiOaSv1NwIhcPhFmQ%3D%3D; rtoken=MDgyNTUyMDE4ZnnVEJXVGYXGokplntUwrDz1wyYyhrYhB5RiuSe27Ueexpc45QHt1qqa%2Bhf5oS50rtKhfq66Z3iEpafwTwQTBqOQol97XA8bVyt4jeGixy%2FypljPa79ytFzvZ%2F%2Fv4btbhGoIKh%2BLAsSlCeoQ6IOtnRsHLVXrCpmYcqCdnDJOoPcJjRy8nA9WU2Ds2%2BnBssE6rXM7%2BYOWNra45oJl3lgXdlxEIV5q6DbD2UYXTqJNlZECzwg%2BtTCdktVbfAyNDw9e0xRGEY9aysHgDXAQOlgvXmiaiip3Ra6s0VWtSSmLqvqn7VDHHxITG1xeMXOdeGeBP3QpI6venEwCcqBYdkMHUdn938zYUuNLpXL9Zp7KoiP9VaiA35vftdqYj9BnYtoWPuVr3nDUPJzdEcexNxeFRg%3D%3D; SPID=f2ff7ce4c266edb61282abdfb928d863fb006e48fd051b06126fff9c40d439dded80b3f7cdaec7add2923ceaab30f004wmcxo; CID=bedc33b6-dba3-454b-821f-64ea96ae94ef; hasCID=1; customer=%7B%22firstName%22%3A%22Brian%22%2C%22lastNameInitial%22%3A%22R%22%2C%22rememberme%22%3Atrue%7D; type=REGISTERED; WMP=4; ACID=bedc33b6-dba3-454b-821f-64ea96ae94ef; location-data=63105%3ASaint%20Louis%3AMO%3A%3A8%3A1|3z2%3B%3B1.6%2C2d1%3B%3B4.45%2C22u%3B%3B6.87%2Cx0%3B%3B8.41%2Cz5%3B%3B8.75%2Cwp%3B%3B10.11%2C1ph%3B%3B10.53%2Ckr%3B%3B10.76%2Cmd%3B%3B10.99%2C4kn%3B%3B11.68||7|1|1xnl%3B16%3B0%3B1.21%2C1xo8%3B16%3B2%3B2.83%2C1xp0%3B16%3B4%3B5.11%2C1xmu%3B16%3B5%3B5.57%2C1xo7%3B16%3B6%3B6.11; TBWL-94-pharmacyTimeslots=c9cc25v8eed2:0:3hn2qvj1bvned:1sxlemt5f5w6v")
+  (env :walmart-cookie))
 
-(def cookie2 "hasACID=1; com.wm.reflector=\"reflectorid:0000000000000000000000@lastupd:1613618093762@firstcreate:1613618093762\"; DL=63105%2C%2C%2Cip%2C63105%2C%2C; TB_Latency_Tracker_100=1; TB_Navigation_Preload_01=1; TB_SFOU-100=; TB_DC_Flap_Test=0; vtc=eexAdnsVK_sDuQ2ZI0VsG0; bstc=eexAdnsVK_sDuQ2ZI0VsG0; mobileweb=0; xpa=-nqgU|5Z16k|7Evb-|9Kguz|hn7Gx; xpm=1%2B1613618137%2BeexAdnsVK_sDuQ2ZI0VsG0~bedc33b6-dba3-454b-821f-64ea96ae94ef%2B0; exp-ck=7Evb-29Kguz1; TS01b0be75=01538efd7c670277b4f28909c43974ef45b5273e8cdff080a6510f558f44f25869c8a945b68b84d331fbb86ba057921f4b18e4302a; TS013ed49a=01538efd7cab89c1fa731ee432f9720d219a98ff6721231fb16b98f9e854e8839e74cf72d0670a9c039c1cc705b3d8074121fc1057; akavpau_p8=1613620748~id=eb056c95b68208091834e55c52c6c4f7; TBV=7; adblocked=false; TS011baee6=01c5a4e2f9b6a1d6beaf3f6c50fc055006ec36cfb9fc6d0fcee83280340c6f3b30e97935e4df5e6fbffac3e804ec2103695864acdc; TS018dc926=01c5a4e2f97a5b98a9e8dd271f05cbe89d2da146cafd65c16528794f35ff97e559e9b0ce07b271e33c4315f69bb2a85296c049440b; TS01e3f36f=01c5a4e2f97a5b98a9e8dd271f05cbe89d2da146cafd65c16528794f35ff97e559e9b0ce07b271e33c4315f69bb2a85296c049440b; __gads=ID=3092c3f32c049138-22b4dbe1a7c6009f:T=1613618097:S=ALNI_Mad40LODgBUvi5xkwCAdVmlOQdf1g; _abck=ecoqndlojff78dicngl0_1947; s_pers=%20s_v%3DY%7C1613622187591%3B%20gpv_p11%3Dno%2520value%7C1613622187634%3B%20gpv_p44%3Dno%2520value%7C1613622187645%3B%20s_vs%3D1%7C1613622187651%3B%20s_fid%3D701969FA85BB8647-3874E78E02937464%7C1676692388080%3B; tb_sw_supported=false; _pxvid=7b523597-7197-11eb-851a-0242ac120017; s_pers_2=+s_fid%3D701969FA85BB8647-3874E78E02937464%7C1676690099145%3BuseVTC%3DY%7C1676733299; s_sess_2=%20s_cc%3Dtrue%3B; _gcl_au=1.1.200160294.1613618100; _uetsid=7bdf61d0719711eb9a2cdb4d68c3d64b; _uetvid=7bdfc220719711eb89cc7109a658fe2f; s_sess=%20ent%3DAccount%253ASignIn%3B%20cp%3DY%3B%20s_sq%3D%3B%20s_cc%3Dtrue%3B%20cps%3D0%3B%20chan%3Dorg%3B%20v59%3DAccount%3B%20v54%3DAccount%253A%2520SignIn%3B; _fbp=fb.1.1613618100169.824182776; s_vi=[CS]v1|3016EDDA2D13BA4D-4000096618AE984C[CE]; wm_ul_plus=INACTIVE|1613704537019; auth=MTAyOTYyMDE4thI0LN3YApXyECrR%2FrUyVVKmr1Z9lUPVRpmsMppnhS18YHCDFnRAIbMK%2BsEnHyadHTS66b0wlyszzFQI6pYsHk9YXptqDS44VDez3iGKD%2FXxl773I%2B54vTjXFs8Snxk2RMvR4vpAGLQJj3IgMhxaynKJnzQpQ307IT2jqPV0haG4qDg0VFcYAH9cFy%2BWboGgSViSsQ9h8go%2FEWcJJIDkd1L6CZSzVZykBKTRtORKnJWy7bku0%2FQnMoUenoW4LdSX5w7JNgRimkP%2FzL3x55LK8ezwYVlQy1XHT4BexWp1i%2BAybQs7AZ3Mo06YcEbfWojRla0Csi8wu3XoL2o9HrBVD1F744EbxZSHWwe7qRKKvY8MvwBhwX7fzGW9PaoH%2F5SjmoGyqRSvmjMBKmkCnN2fDA%3D%3D; rtoken=MDgyNTUyMDE4ZnnVEJXVGYXGokplntUwrDz1wyYyhrYhB5RiuSe27Ueexpc45QHt1qqa%2Bhf5oS50rtKhfq66Z3iEpafwTwQTBqOQol97XA8bVyt4jeGixy%2FypljPa79ytFzvZ%2F%2Fv4btbhGoIKh%2BLAsSlCeoQ6IOtnRsHLVXrCpmYcqCdnDJOoPcJjRy8nA9WU2Ds2%2BnBssE6rXM7%2BYOWNra45oJl3lgXdlxEIV5q6DbD2UYXTqJNlZECzwg%2BtTCdktVbfAyNDw9e0xRGEY9aysHgDXAQOlgvXmiaiip3Ra6s0VWtSSmLqvqn7VDHHxITG1xeMXOdeGeBP3QpI6venEwCcqBYdkMHUdn938zYUuNLpXL9Zp7KoiP9VaiA35vftdqYj9BnYtoWPuVr3nDUPJzdEcexNxeFRg%3D%3D; SPID=f2ff7ce4c266edb61282abdfb928d863fb006e48fd051b06126fff9c40d439dded80b3f7cdaec7add2923ceaab30f004wmcxo; CID=bedc33b6-dba3-454b-821f-64ea96ae94ef; hasCID=1; customer=%7B%22firstName%22%3A%22Brian%22%2C%22lastNameInitial%22%3A%22R%22%2C%22rememberme%22%3Atrue%7D; type=REGISTERED; WMP=4; ACID=bedc33b6-dba3-454b-821f-64ea96ae94ef; location-data=63105%3ASaint%20Louis%3AMO%3A%3A8%3A1|3z2%3B%3B1.6%2C2d1%3B%3B4.45%2C22u%3B%3B6.87%2Cx0%3B%3B8.41%2Cz5%3B%3B8.75%2Cwp%3B%3B10.11%2C1ph%3B%3B10.53%2Ckr%3B%3B10.76%2Cmd%3B%3B10.99%2C4kn%3B%3B11.68||7|1|1xnl%3B16%3B0%3B1.21%2C1xo8%3B16%3B2%3B2.83%2C1xp0%3B16%3B4%3B5.11%2C1xmu%3B16%3B5%3B5.57%2C1xo7%3B16%3B6%3B6.11; _pxde=daf628828f4a82207d7b73e26867ee45979f355986302dc3a55dd0701352cfc5:eyJ0aW1lc3RhbXAiOjE2MTM2MjAzMzYzMzcsImZfa2IiOjAsImlwY19pZCI6W119; _px3=e5b2a3c629269a5715d8b33f5cf6822580be1dc176f0590c18aee79186c35c24:ra4kHDuduEHRS1fwTR765f+6vgcT0ysOUWEHjBG+ezvLShhZNJInawa3aIa53ZTCBcfkNZO3M3GAk2r5GmtDzw==:1000:rtFzj2ZqZ1O64cmBDOnAgwB3wFh8iDpCBVV5e4qB9wjCorDR1zPfTeiJT69PJdAePBnZRWNg33hQGRGRLTNk2uTjJTsN5dcRrwv3TlC8dkvgquS7UzwHXbjC1BNr5aJKfGPYRNkjACb1Gr1WXzQpXRSp2ljEFQI42pnJFWARWQc=; next-day=null|true|true|null|1613620148 ")
+(defn get-session! []
+  (let [params {:captcha {:sensorData "2a25G2m84Vrp0o9c4185491.12-1,8,-36,-890,Mozilla/9.8 (X18; Linux x04_33; rv:77.2) Gecko/90410063 Firefox/71.0,uaend,28020,51196365,en-US,Gecko,2,4,8,7,367347,7462740,0990,2076,7348,8987,4029,988,9099,,cpen:6,i5:8,dm:7,cwen:2,non:8,opc:1,fc:7,sc:7,wrc:2,isc:27,vib:8,bat:6,x53:1,x19:4,4715,4.157281209166,448647501212,loc:-3,3,-91,-200,do_en,dm_en,t_en-7,4,-63,-136,9,4,4,9,210,551,9;3,4,8,8,853,982,2;4,-2,9,7,-2,-7,6;3,-8,0,0,-1,-3,4;8,9,0,1,2287,579,1;9,-1,1,0,3717,990,7;3,2,6,7,978,427,3;1,6,6,3,2850,814,9;2…,6229,179,350,-2;-7,8,-75,-187,-1,8,-36,-801,-4,2,-10,-916,-8,5,-80,-532,-0,9,-04,-367,1,8892;5,2960;7,0178;9,5111;4,9222;2,4547;-7,8,-75,-182,-1,8,-36,-805,NaN,020007,1,9,7,3,NaN,3058,8510692294551,9782631518424,12,24169,7,74,4419,3,9,4668,014039,1,ecoqndlojff10dicngl0_2933,8673,456,-676393647,33964316-0,4,-12,-003,-2,9-3,6,-01,-40,965228767;81,85,26,79,62,32,24,60,36,05,7;;true;true;true;050;true;86;66;true;false;unspecified-2,1,-58,-97,6694-1,8,-36,-806,13976828-3,3,-91,-217,384589-0,9,-04,-385,;12;6;4"}
+                :password "b#O|{Id017}F8!a"
+                :rememberme true
+                :showRememberme "true"
+                :username "brianrubinton@gmail.com"
+                }
+        response (try
+                   @(http/post "https://www.walmart.com/account/electrode/api/signin?returnUrl=/account?r=yes"
+                               {:headers {
+                                          "Accept" "*/*" ; whitespace error
+                                          "Accept-Encoding" "gzip,deflate,br"
+                                          "Accept-Language" "en-US,en;q=0.5"
+                                          "Cache-Control" "no-cache"
+                                          "Cookie" cookie
+                                          "content-type" "application/json"
+                                          "Host" "www.walmart.com"
+                                          "Origin" "https://www.walmart.com"
+                                          "Pragma" "no-cache"
+                                          "Referer" "Referer: https://www.walmart.com/account/login?returnUrl=%2Faccount%3Fr%3Dyes"
+                                          "TE" "Trailers"
+                                          "User-Agent" "Mozilla/5.0 (X11; Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0"
+                                          }
+                                :params (json/generate-string params)})
+                   (catch Exception e
+                     (println (-> e ex-data :status))
+                     (-> (ex-data e)
+                         (update :body (comp json/parse-string bs/to-string)))))]
+    (-> response)))
+
+(comment
+
+  (-> (get-session!)
+      :body
+      clojure.pprint/pprint)
+
+  )
 
 (defn check-availability [store-id start-date end-date]
   (let [response (try
                    @(http/post "https://www.walmart.com/pharmacy/v2/clinical-services/time-slots/bedc33b6-dba3-454b-821f-64ea96ae94ef"
                                {:headers {"User-Agent" "Mozilla/5.0 (X11; Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0"
                                           "Accept-Language" "en-us,en;q=0.5"
-                                          "Cookie" cookie2
+                                          "Cookie" cookie
                                           "Referer" "https://www.walmart.com/pharmacy/clinical-services/immunization/scheduled?imzType=covid&action=SignIn&rm=true"
                                           "rx-electrode" true
                                           "WPharmacy-TrackingID" "abb31e81-6ad6-4faa-bb27-9232f679421d"
@@ -33,6 +72,7 @@
     (-> response
         (update :body (fn [body] (json/parse-string (bs/to-string body)))))
     ))
+(def check-availability-memo (memoize check-availability))
 
 
 (defn success? [response]
@@ -42,6 +82,16 @@
   (some->> (get-in response ["data" "slotDays"])
            (map #(get % "slots"))
            (some not-empty)))
+
+(def missouri-stores
+  #{1514 92 56 834 5149 184 46 820 145 2175 1188 203 845 888 89 109 13 914 2600
+    135 20 895 152 95 30 44 295 195 37 805 69 5927 337 51 1120 609 96 326 313
+    166 122 190 189 2694 5313 338 14 783 453 1177 5150 363 78 801 25 40 48 7249
+    88 871 17 34 2702 2616 2856 815 354 379 82 5261 173 319 1094 1009 325 101
+    1161 648 21 27 219 3061 9 65 837 60 99 357 61 1021 250 172 267 243 15 32
+    4381 7072 188 80 159 451 6500 1014 29 5477 4057 4478 79 4470 59 2442 2857
+    4553 234 2955 573 4590 7127 19 560 2994 1265 2213 2839 5692 179 3062 5693
+    444 3111 86 2221 3238 138 5421 5427})
 
 (comment
 
@@ -55,23 +105,58 @@
         (:body)))
   (clojure.pprint/pprint x)
 
-  x
   (def result
-    (->> (range 1 100)
+    (->> missouri-stores
+         (map str)
          (pmap (fn [id]
-                 {:response (check-availability id "02182021" "02242021")
+                 {:response (check-availability id "02282021" "03062021")
                   :id id}))
          (filter (every-pred (comp success? :body :response)
-                             (comp has-appointments? :body :response)))))
+                             (comp has-appointments? :body :response)))
+         (pmap (fn [{:keys [response id] :as acc}]
+                 (let [address ])
+                 (merge acc ())))
+         ))
 
-  (clojure.pprint/pprint )
+  (count result)
+
+  (count missouri-stores)
+
   (first result)
+
+  (clojure.pprint/pprint (rand-nth result))
+
+  (get-in (last result) [:response :body])
 
   body
 
   (clojure.pprint/pprint x)
 
+  
+
   )
+
+(defn store-html->address [html]
+  (let [subtree (-> (select/select (select/child (select/attr :itemprop #{"address"}))
+                                   html)
+                    first)
+        street-address (-> (select/select (select/child (select/attr :itemprop #{"streetAddress"}))
+                                          subtree)
+                           first :content first)
+        locality (-> (select/select (select/child (select/attr :itemprop #{"addressLocality"}))
+                                    subtree)
+                     first :content first)
+        state (-> (select/select (select/child (select/attr :itemprop #{"addressRegion"}))
+                                    subtree)
+                     first :content first)
+        zip-code (-> (select/select (select/child (select/attr :itemprop #{"postalCode"}))
+                                    subtree)
+                     first :content first)
+        ]
+    {:street street-address
+     :city locality
+     :state state
+     :zip-code zip-code}))
 
 ;; TODO pull the type name and address out of there
 ;; class=store-type-name
@@ -83,13 +168,93 @@
                             {:headers {"Content-Type" "application/json"}})]
     (-> response
         (update :body bs/to-string))))
+(def get-store-memo (memoize get-store))
+;; <div class="store-address" itemprop="address" itemscope="" itemtype="http://schema.org/PostalAddress" data-tl-id="StoreHeader-StoreAddress"><span itemprop="streetAddress" class="store-address-line-1">2150 Main St</span><span class="address-line-separator">,&nbsp;</span><span itemprop="streetAddress" class="store-address-line-2"><span itemprop="addressLocality" class="store-address-city">Boonville</span>,&nbsp;<span itemprop="postalCode" class="store-address-postal">MO</span>&nbsp;<span itemprop="postalCode" class="store-address-postal">65233</span></span></div>
+(defn store-html->data [html-str]
+  (let [html (-> html-str (hickory/parse) (hickory/as-hickory))
+        ;; itemprop="address"
+        ;; itemtype="http://schema.org/PostalAddress"
+        address (store-html->address html)
+        ]
+    address))
+
+(defn get-distance [from-address to-address]
+  (let [headers {
+                 "content-type" "application/json"
+                 }
+        params {"waypoint.1" (get from-address :zip-code)
+                "waypoint.2" (get to-address :zip-code)
+                "optimize" "time" ; also "distance", "timeWithTraffic", "timeAvoidClosure"
+                "travelmode" "Driving"
+                "distanceUnit" "Mile"
+                "key" (env :bing-api-key)
+                }
+        response (try @(http/get "http://dev.virtualearth.net/REST/v1/Routes"
+                                 {:headers headers
+                                  :query-params params})
+                      (catch Exception e
+                        (ex-data e)))
+        body (-> response :body bs/to-string json/parse-string)
+        ;; body (-> response :body bs/to-string)
+        ]
+     ;; (clojure.pprint/pprint body)
+    {:distance-in-miles (get-in body ["resourceSets" 0 "resources" 0 "travelDistance"])
+     :duration-in-seconds (get-in body ["resourceSets" 0 "resources" 0 "travelDuration"])}
+    ))
 
 (comment
+  (clojure.pprint/pprint (get-distance {:zip-code "63105"} {:zip-code "63131"}))
 
-  (println
-   (:body (get-store 2)))
+  (def result
+    (->> missouri-stores
+         (map str)
+         (pmap (fn [id]
+                 {:response (check-availability id "02282021" "03062021")
+                  :id id}))
+         (filter (every-pred (comp success? :body :response)
+                             (comp has-appointments? :body :response)))
+         (pmap (fn [{:keys [response id] :as acc}]
+                 (println id)
+                 (let [address (store-html->data (:body (get-store (str id))))]
+                   (println address)
+                   (merge acc address (get-distance {:zip-code "63105"}
+                                                    {:zip-code (str (get address :zip-code))})))))
+         (sort-by :distance-in-seconds <)))
+
+  (clojure.pprint/pprint (last result))
+
+  (clojure.pprint/pprint (first result))
+
+
+  (def store-id-with-appointments "820")
+
+  (def store-response (get-store store-id-with-appointments))
+
+  (clojure.pprint/pprint
+   (store-html->data (get store-response :body)))
 
   )
 
 
-
+;; UI needs to:
+;; MAP
+;; - all values in stores-by-id
+;; SORTED LIST
+;; - accept ZIP CODE as input
+;; - lookup state from zip
+;; - get store-ids-by-state
+;; - intersect with store-ids-with-appointments
+;; - get vals from stores-by-id
+;; - sort by distance
+;; - filter stores with appts by day and time range
+(def json-data
+  {:stores-by-id {42 {:id 42
+                      :state :ny
+                      :address ""
+                      :slotDays []
+                      }}
+   :store-ids-with-appointments []
+   :store-ids-by-state {:ny []}
+   :eligible-set [] ; stores-by-id filtered by with-appointments and state
+   :active-set [] ; eligible-set filtered by day and time selections
+   })

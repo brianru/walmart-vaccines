@@ -3,6 +3,9 @@
          org.clojure/clojure                {:mvn/version "1.10.1"}
          aleph/aleph                        {:mvn/version "0.4.6"}
          cheshire/cheshire                  {:mvn/version "5.10.0"}
+         hickory/hickory                    {:mvn/version "0.7.1"}
+         clj-config/clj-config {:git/url "https://gitlab.com/orangefoxcollective/clj-config.git"
+                                :sha     "5999ac2bf9878a2238731f7557f9a00fe6db41b7"}
          }
 
  :aliases
